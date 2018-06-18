@@ -20,10 +20,9 @@ public:
 };
 
 template <typename T> class Benchmarker : public BenchmarkerBase {
-    T & scanner;
+    T scanner;
 public:
-    Benchmarker(T & scanner_in) : scanner(scanner_in) {}
-    
+    Benchmarker(T scanner_in) : scanner(scanner_in) {}
     virtual std::vector<double> benchmark(InputBlock input, u32 repeats) {
         std::vector<u32> out;
         std::vector<double> results;
@@ -41,10 +40,9 @@ public:
 
 template <typename T> class Logger : public LoggerBase {
 public:
-    T & scanner;
+    T scanner;
 public:
-    Logger(T & scanner_in) : scanner(scanner_in) {}
-    
+    Logger(T scanner_in) : scanner(scanner_in) {}
     virtual std::vector<u32> log(InputBlock input) {
         std::vector<u32> out;
         out.resize(input.second);

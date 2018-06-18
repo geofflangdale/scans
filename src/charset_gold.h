@@ -9,7 +9,7 @@
 class CharsetGold {
     std::set<u8> s;
 public:
-    CharsetGold(std::set<u8> & s_in) : s(s_in) {
+    CharsetGold(const std::set<u8> & s_in) : s(s_in) {
     }
 
     void scan(InputBlock input, std::vector<u32> & out) {

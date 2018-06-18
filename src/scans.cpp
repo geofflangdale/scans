@@ -14,11 +14,9 @@
 #include "literal.h"
 #include "scans.h"
 
-#include "truffle.h"
-#include "charset_gold.h"
+#include "public.h"
 
 using namespace std;
-
 
 InputBlock get_corpus(string filename) {
 	ifstream is(filename, ios::binary);
@@ -125,6 +123,7 @@ int main(int argc, char * argv[]) {
     bool dump_times = false;
     bool log = false;
     bool verify = false;
+    bool shufti = false; // obviously not scalable. Will need to have a named lookup eventually
     string corpus_file("in.txt");
     auto cli = Help (show_help)
              | Opt( repeats, "repeats" )
@@ -136,6 +135,9 @@ int main(int argc, char * argv[]) {
              | Opt( log )
                     ["--log"]
                     ("Log results")
+             | Opt( shufti )
+                    ["--shufti"]
+                    ("Use shufti not truffle")
              | Opt( verify )
                     ["-v"]["--verify"]
                     ("Verify two matchers")
@@ -161,20 +163,17 @@ int main(int argc, char * argv[]) {
 
     auto corpus = get_corpus(corpus_file);
 
-    set<u8> s { 'a', 'b', 'c' };
-
-    Truffle t(s);
-    CharsetGold g(s);
+    set<u8> s { 'z', 'q', 'x' };
 
     if (log) {
-        Logger<Truffle> logger(t);
-        log_matcher(logger, corpus);
+        auto l = shufti ? get_logger_shufti(s) : get_logger_truffle(s);
+        log_matcher(*l, corpus);
     } else if (verify) {
-        Logger<Truffle> logger(t);
-        Logger<CharsetGold> logger_gold(g);
-        verify_matchers(logger, logger_gold, corpus);
+        auto l = shufti ? get_logger_shufti(s) : get_logger_truffle(s);
+        auto lg = get_logger_charsetgold(s);
+        verify_matchers(*l, *lg, corpus);
     } else {
-        Benchmarker<Truffle> bencher(t);
-        run_benchmarks(bencher, corpus, repeats, dump_times);
+        auto b = shufti ? get_benchmarker_shufti(s) : get_benchmarker_truffle(s);
+        run_benchmarks(*b, corpus, repeats, dump_times);
     }
 }

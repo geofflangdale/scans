@@ -8,6 +8,9 @@
 
 #include <iostream>
 
+// TODO: create as m128 and mirror like shufti
+// TODO: add a prefetch
+
 class Truffle {
     m256 lo_set_mask = _mm256_set1_epi8(0);
     m256 hi_set_mask = _mm256_set1_epi8(0);
@@ -26,8 +29,8 @@ class Truffle {
     }
 
 public:
-    Truffle(std::set<u8> & inputs) {
-        for (auto c : inputs) {
+    Truffle(const std::set<u8> & in) {
+        for (auto c : in) {
             bool high = c & 0x80;
             u32 byte = c & 0x0f;
             u32 bit = (c & 0x70) >> 4;
