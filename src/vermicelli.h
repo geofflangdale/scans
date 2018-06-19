@@ -36,30 +36,14 @@ public:
         and_mask = _mm256_set1_epi8(msk);
         cmp_mask = _mm256_set1_epi8(cmp);
     }
+    
+    u32 vermicelli_op(m256 input) {
+        m256 t = _mm256_cmpeq_epi8(_mm256_and_si256(input, and_mask), cmp_mask);
+        return (u32)_mm256_movemask_epi8(t);
+    }
 
     void scan(InputBlock input, std::vector<u32> & out, UNUSED std::vector<u8> & tmp) {
-        u8 * buf = input.first;
-        size_t len = input.second;
-        dump256(lo, "lo");
-        dump256(hi, "hi");
-        u32 result_idx = 0;
-        for (size_t idx = 0; idx < len; idx+=64) {
-            __builtin_prefetch(buf+ idx + 32*128);
-            m256 input_0 = _mm256_load_si256((const m256 *)(buf + idx));
-            m256 input_1 = _mm256_load_si256((const m256 *)(buf + idx + 32));
-            m256 t1_0 = _mm256_cmpeq_epi8(_mm256_and_si256(input_0, and_mask), cmp_mask);
-            m256 t1_1 = _mm256_cmpeq_epi8(_mm256_and_si256(input_1, and_mask), cmp_mask);
-            dump256(t1_0, "t1_0");
-            dump256(t1_1, "t1_1");
-            u64 res_0 = (u32)_mm256_movemask_epi8(t1_0);
-            u64 res_1 = (u64)_mm256_movemask_epi8(t1_1) << 32;
-            u64 res = res_0 | res_1;
-            while (res) {
-                out[result_idx++] = (u32)idx + __builtin_ctzll(res);
-                res &= res - 1ULL;
-            }
-        }
-        out.resize(result_idx);
+        apply_scanner_op<Vermicelli, &Vermicelli::vermicelli_op>(*this, input, out);
     }
 };
 

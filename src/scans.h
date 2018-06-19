@@ -7,6 +7,28 @@
 
 typedef std::pair<u8 *, size_t> InputBlock;
 
+// any bulk bytes->bits->indexes operation scan can be phrased this way
+// TODO: write the boring code that handles small inputs, proper warm-up and cooldown
+template<typename T, u32 (T::*op)(m256 input)>
+inline void apply_scanner_op(T & scanner, InputBlock input, std::vector<u32> & out) {
+        u8 * buf = input.first;
+        size_t len = input.second;
+        u32 result_idx = 0;
+        for (size_t idx = 0; idx < len; idx+=64) {
+            __builtin_prefetch(buf+ idx + 64*64);
+            m256 input_0 = _mm256_load_si256((const m256 *)(buf + idx));
+            m256 input_1 = _mm256_load_si256((const m256 *)(buf + idx + 32));
+            u64 res_0 = (scanner.*op)(input_0);
+            u64 res_1 = (u64)(scanner.*op)(input_1) << 32;
+            u64 res = res_0 | res_1;
+            while (res) {
+                out[result_idx++] = (u32)idx + __builtin_ctzll(res);
+                res &= res - 1ULL;
+            }
+        }
+        out.resize(result_idx);
+}
+
 class WrapperBase {
 public:
     WrapperBase() {}

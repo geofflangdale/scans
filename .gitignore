@@ -2,3 +2,5 @@ inputs/mtent12.txt
 
 release
 debug
+
+*.swp

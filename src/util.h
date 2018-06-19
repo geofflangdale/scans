@@ -18,3 +18,5 @@ inline void set_bit(T & m, u32 bit) {
     u.bytes[bit/8] |= (1 << bit%8);
     m = u.avx;
 }
+
+
