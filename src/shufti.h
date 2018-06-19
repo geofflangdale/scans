@@ -1,13 +1,11 @@
 #pragma once
-
 #include <vector>
 #include <set>
+#include <iostream>
 #include <x86intrin.h>
 #include "common_defs.h"
 #include "util.h"
 #include "scans.h"
-
-#include <iostream>
 
 class Shufti {
     m256 lo;

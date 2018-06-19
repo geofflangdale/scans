@@ -47,3 +47,24 @@ public:
     }
 };
 
+class VermLite {
+    m256 cmp_mask;
+public:
+    VermLite(const std::set<u8> & in) {
+        if (in.size() > 1) {
+            throw "Vermlite only handles 1 char";
+        }
+        u8 cmp = *(in.begin());
+        cmp_mask = _mm256_set1_epi8(cmp);
+    }
+    
+    u32 vermlite_op(m256 input) {
+        return (u32)_mm256_movemask_epi8(_mm256_cmpeq_epi8(input, cmp_mask));
+    }
+
+    void scan(InputBlock input, std::vector<u32> & out, UNUSED std::vector<u8> & tmp) {
+        apply_scanner_op<VermLite, &VermLite::vermlite_op>(*this, input, out);
+    }
+};
+
+

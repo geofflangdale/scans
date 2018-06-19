@@ -1,5 +1,4 @@
 #pragma once
-
 #include <utility>
 #include <vector>
 #include <chrono>
@@ -15,7 +14,7 @@ inline void apply_scanner_op(T & scanner, InputBlock input, std::vector<u32> & o
         size_t len = input.second;
         u32 result_idx = 0;
         for (size_t idx = 0; idx < len; idx+=64) {
-            __builtin_prefetch(buf+ idx + 64*64);
+            __builtin_prefetch(buf + idx + 64*64);
             m256 input_0 = _mm256_load_si256((const m256 *)(buf + idx));
             m256 input_1 = _mm256_load_si256((const m256 *)(buf + idx + 32));
             u64 res_0 = (scanner.*op)(input_0);

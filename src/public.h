@@ -10,9 +10,6 @@
 
 std::unique_ptr<WrapperBase> get_wrapper(std::string name, const std::set<u8> & in);
 
-// we will leave this here for things that need direct access
-
+// this is here for things that need direct access
 std::unique_ptr<WrapperBase> get_wrapper_charsetgold(const std::set<u8> & in);
-std::unique_ptr<WrapperBase> get_wrapper_truffle(const std::set<u8> & in);
-std::unique_ptr<WrapperBase> get_wrapper_shufti(const std::set<u8> & in);
-std::unique_ptr<WrapperBase> get_wrapper_vermicelli(const std::set<u8> & in);
+
