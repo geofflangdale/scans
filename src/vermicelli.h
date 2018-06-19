@@ -3,6 +3,7 @@
 #include <vector>
 #include <set>
 #include <x86intrin.h>
+#include <stdexcept>
 #include "common_defs.h"
 #include "util.h"
 #include "scans.h"
@@ -15,7 +16,7 @@ class Vermicelli {
 public:
     Vermicelli(const std::set<u8> & in) {
         if (in.size() > 2) {
-            throw "We don't support this yet";
+            throw std::logic_error("Vermicelli only supports 1-2 characters for now.");
         }
 
         u8 cmp, msk = 0xff;
@@ -25,7 +26,7 @@ public:
             u8 c1 = *i++;
             u8 c2 = *i++;
             if (popcount(c1 ^ c2) != 1) {
-                throw "Vermicelli only supports size 2 sets differing in 1 bit";
+                throw std::logic_error("Vermicelli can only support size 2 sets differing only at 1 bit.");
             }
             msk = ~(c1 ^ c2);
             cmp = c1 & msk;
@@ -46,25 +47,3 @@ public:
         apply_scanner_op<Vermicelli, &Vermicelli::vermicelli_op>(*this, input, out);
     }
 };
-
-class VermLite {
-    m256 cmp_mask;
-public:
-    VermLite(const std::set<u8> & in) {
-        if (in.size() > 1) {
-            throw "Vermlite only handles 1 char";
-        }
-        u8 cmp = *(in.begin());
-        cmp_mask = _mm256_set1_epi8(cmp);
-    }
-    
-    u32 vermlite_op(m256 input) {
-        return (u32)_mm256_movemask_epi8(_mm256_cmpeq_epi8(input, cmp_mask));
-    }
-
-    void scan(InputBlock input, std::vector<u32> & out, UNUSED std::vector<u8> & tmp) {
-        apply_scanner_op<VermLite, &VermLite::vermlite_op>(*this, input, out);
-    }
-};
-
-

@@ -6,6 +6,7 @@
 #include <map>
 #include <iterator>
 #include <algorithm>
+#include <stdexcept>
 
 #include <clara.hpp>
 
@@ -167,18 +168,24 @@ int main(int argc, char * argv[]) {
 
     set<u8> s(charset.begin(), charset.end()); // rudimentary; no escapes
 
-    auto w = get_wrapper(scanner_name, s);
-    if (!w) {
-        cerr << "No such scanner: " << scanner_name << "\n";
-        exit(1);
+    try {
+        auto w = get_wrapper(scanner_name, s);
+        if (!w) {
+            cerr << "No such scanner: " << scanner_name << "\n";
+            exit(1);
+        }
+
+        if (log) {
+            log_matcher(*w, corpus);
+        } else if (verify) {
+            auto wg = get_wrapper_charsetgold(s);
+            verify_matchers(*w, *wg, corpus);
+        } else {
+            run_benchmarks(*w, corpus, repeats, dump_times);
+        }
+    }
+    catch (const exception& e) {
+        cerr << "Could not build scanner: " << e.what() << "\n";
     }
 
-    if (log) {
-        log_matcher(*w, corpus);
-    } else if (verify) {
-        auto wg = get_wrapper_charsetgold(s);
-        verify_matchers(*w, *wg, corpus);
-    } else {
-        run_benchmarks(*w, corpus, repeats, dump_times);
-    }
 }

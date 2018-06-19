@@ -2,6 +2,7 @@
 #include <vector>
 #include <set>
 #include <iostream>
+#include <stdexcept>
 #include <x86intrin.h>
 #include "common_defs.h"
 #include "util.h"
@@ -20,7 +21,7 @@ public:
 
         // easiest is just to limit to <8
         if (in.size() > 8) {
-            throw "We don't support this yet";
+            throw std::logic_error("Cannot construct shuftis with >8 characters yet.");
         }
         u32 idx = 0; 
         for (u8 c : in) {

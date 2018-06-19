@@ -12,6 +12,10 @@
 class Truffle {
     m256 lo;
     m256 hi;
+    const m256 log2_mask = _mm256_setr_epi8(
+        1, 2, 4, 8, 16, 32, 64, 128, 1, 2, 4, 8, 16, 32, 64, 128,
+        1, 2, 4, 8, 16, 32, 64, 128, 1, 2, 4, 8, 16, 32, 64, 128
+    );
     
 public:
     Truffle(const std::set<u8> & in) {
@@ -31,10 +35,6 @@ public:
     }
 
     u32 truffle_op(m256 input) {
-        const m256 log2_mask = _mm256_setr_epi8(
-            1, 2, 4, 8, 16, 32, 64, 128, 1, 2, 4, 8, 16, 32, 64, 128,
-            1, 2, 4, 8, 16, 32, 64, 128, 1, 2, 4, 8, 16, 32, 64, 128
-        );
         m256 t1 = _mm256_shuffle_epi8(lo, input);
         m256 t2 = _mm256_shuffle_epi8(hi, _mm256_xor_si256(input, _mm256_set1_epi8(0x80)));
         m256 t3 = _mm256_or_si256(t1, t2);
