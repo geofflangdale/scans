@@ -55,6 +55,11 @@ u32 ctz64(u64 x) {
 #endif
 }
 
+static inline
+u32 popcount(u32 x) {
+    return __builtin_popcount(x);
+}
+
 #ifdef DEBUG
 #include <iomanip>
 #include <iostream>

@@ -71,27 +71,25 @@ bool get_signatures(string filename, vector<Literal> & lits) {
 }
 
 
-void run_benchmarks(BenchmarkerBase & bench, InputBlock corpus, int repeats,
+void run_benchmarks(WrapperBase & w, InputBlock corpus, int repeats,
                     bool dump_times) {
-    auto res = bench.benchmark(corpus, repeats);
-    
+    auto res = w.benchmark(corpus, repeats);
     if (dump_times) {
         copy(res.begin(), res.end(), ostream_iterator<double>(cout, "\n"));
     } 
-
     auto best = min_element(res.begin(), res.end());
     cout << "Best run: " << setw(2) << *best << "s or " 
          << (((double)corpus.second/1000000000) / *best) << " Gbytes/second\n";
 }
 
-void log_matcher(LoggerBase & logger, InputBlock corpus) {
-    auto out = logger.log(corpus);
+void log_matcher(WrapperBase & w, InputBlock corpus) {
+    auto out = w.log(corpus);
     copy(out.begin(), out.end(), ostream_iterator<u32>(cout, "\n"));
 }
 
-bool verify_matchers(LoggerBase & logger, LoggerBase & logger_gold, InputBlock corpus) {
-    auto out = logger.log(corpus);
-    auto out_gold = logger_gold.log(corpus);
+bool verify_matchers(WrapperBase & w, WrapperBase & w_gold, InputBlock corpus) {
+    auto out = w.log(corpus);
+    auto out_gold = w_gold.log(corpus);
 
     if (out != out_gold) {
         cout << "Error: results don't match\n";
@@ -123,8 +121,9 @@ int main(int argc, char * argv[]) {
     bool dump_times = false;
     bool log = false;
     bool verify = false;
-    bool shufti = false; // obviously not scalable. Will need to have a named lookup eventually
+    string scanner_name = "truffle";
     string corpus_file("in.txt");
+    string charset("Zz"); // by default, something dumb
     auto cli = Help (show_help)
              | Opt( repeats, "repeats" )
                     ["-r"]["--repeats"]
@@ -135,12 +134,15 @@ int main(int argc, char * argv[]) {
              | Opt( log )
                     ["--log"]
                     ("Log results")
-             | Opt( shufti )
-                    ["--shufti"]
-                    ("Use shufti not truffle")
+             | Opt (scanner_name, "scanner_name")
+                    ["-s"]["--scanner"] 
+                    ("Which scanner to use")
              | Opt( verify )
                     ["-v"]["--verify"]
                     ("Verify two matchers")
+             | Opt ( charset, "charset")
+                    ["--charset"]
+                    ("Character set to scan for")
              | Opt( corpus_file, "corpus" )
                     ["-c"]["--corpus"]
                     ("Name of corpus file");
@@ -163,17 +165,20 @@ int main(int argc, char * argv[]) {
 
     auto corpus = get_corpus(corpus_file);
 
-    set<u8> s { 'z', 'q', 'x' };
+    set<u8> s(charset.begin(), charset.end()); // rudimentary; no escapes
+
+    auto w = get_wrapper(scanner_name, s);
+    if (!w) {
+        cerr << "No such scanner: " << scanner_name << "\n";
+        exit(1);
+    }
 
     if (log) {
-        auto l = shufti ? get_logger_shufti(s) : get_logger_truffle(s);
-        log_matcher(*l, corpus);
+        log_matcher(*w, corpus);
     } else if (verify) {
-        auto l = shufti ? get_logger_shufti(s) : get_logger_truffle(s);
-        auto lg = get_logger_charsetgold(s);
-        verify_matchers(*l, *lg, corpus);
+        auto wg = get_wrapper_charsetgold(s);
+        verify_matchers(*w, *wg, corpus);
     } else {
-        auto b = shufti ? get_benchmarker_shufti(s) : get_benchmarker_truffle(s);
-        run_benchmarks(*b, corpus, repeats, dump_times);
+        run_benchmarks(*w, corpus, repeats, dump_times);
     }
 }
