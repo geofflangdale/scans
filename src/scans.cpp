@@ -120,9 +120,9 @@ int main(int argc, char * argv[]) {
 #endif
     bool show_help = false;
     bool dump_times = false;
-    bool log = false;
-    bool verify = false;
     string scanner_name = "truffle";
+    typedef enum { BENCHMARK, VERIFY, LOG } CommandType;
+    CommandType command = BENCHMARK;
     string corpus_file("in.txt");
     string charset("Zz"); // by default, something dumb
     auto cli = Help (show_help)
@@ -132,21 +132,29 @@ int main(int argc, char * argv[]) {
              | Opt( dump_times )
                     ["--dumptimes"]
                     ("Dump all times to stdout")
-             | Opt( log )
-                    ["--log"]
-                    ("Log results")
              | Opt (scanner_name, "scanner_name")
                     ["-s"]["--scanner"] 
                     ("Which scanner to use")
-             | Opt( verify )
-                    ["-v"]["--verify"]
-                    ("Verify two matchers")
              | Opt ( charset, "charset")
                     ["--charset"]
                     ("Character set to scan for")
              | Opt( corpus_file, "corpus" )
                     ["-c"]["--corpus"]
-                    ("Name of corpus file");
+                    ("Name of corpus file")
+             | Arg( [&]( string cmd) {
+                        map<string, CommandType> cmd_map = {
+                            {"benchmark", BENCHMARK},
+                            {"verify", VERIFY},
+                            {"log", LOG}
+                        };
+                        if (cmd_map.find(cmd) == cmd_map.end()) {
+                            return ParserResult::runtimeError("Unknown command '" + cmd + "'");
+                        } else {
+                            command = cmd_map[cmd];
+                            return ParserResult::ok(ParseResultType::Matched);
+                        }
+                    }, "benchmark|verify|log")
+                    ("Which command to run");
 
     auto result = cli.parse( Args( argc, argv ) );
     if( !result ) {
@@ -166,7 +174,9 @@ int main(int argc, char * argv[]) {
 
     auto corpus = get_corpus(corpus_file);
 
-    set<u8> s(charset.begin(), charset.end()); // rudimentary; no escapes
+    // make a charset by just chunking everything from the 
+    // argument into a set<u8>. No checkign for dupes, no ranges, no escapes
+    set<u8> s(charset.begin(), charset.end()); 
 
     try {
         auto w = get_wrapper(scanner_name, s);
@@ -175,13 +185,18 @@ int main(int argc, char * argv[]) {
             exit(1);
         }
 
-        if (log) {
+        switch (command) {
+        case LOG:
             log_matcher(*w, corpus);
-        } else if (verify) {
+            break;
+        case VERIFY: {
             auto wg = get_wrapper_charsetgold(s);
             verify_matchers(*w, *wg, corpus);
-        } else {
+            break;
+        }
+        case BENCHMARK:
             run_benchmarks(*w, corpus, repeats, dump_times);
+            break;
         }
     }
     catch (const exception& e) {
