@@ -14,6 +14,7 @@ std::unique_ptr<WrapperBase> get_wrapper_vermicelli(const std::set<u8> & in);
 std::unique_ptr<WrapperBase> get_wrapper_charsetgold(const std::set<u8> & in);
 
 std::unique_ptr<WrapperBase> get_wrapper_dverm(const DoubleCharsetWorkload & in);
+std::unique_ptr<WrapperBase> get_wrapper_doublesetgold(const DoubleCharsetWorkload & in);
 
 // add a proper parser later
 set<u8> workload_to_charset(string s) {
@@ -55,6 +56,8 @@ unique_ptr<WrapperBase> get_wrapper(string name, string workload) {
         return get_wrapper_vermicelli(workload_to_charset(workload));
     } else if (name == "dverm") {
         return get_wrapper_dverm(workload_to_double_char_set(workload));
+    } else if (name == "doublesetgold") {
+        return get_wrapper_doublesetgold(workload_to_double_char_set(workload));
     }
     throw logic_error("No such matcher exists: " + name);
 }
