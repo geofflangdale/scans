@@ -174,12 +174,8 @@ int main(int argc, char * argv[]) {
 
     auto corpus = get_corpus(corpus_file);
 
-    // make a charset by just chunking everything from the 
-    // argument into a set<u8>. No checkign for dupes, no ranges, no escapes
-    set<u8> s(charset.begin(), charset.end()); 
-
     try {
-        auto w = get_wrapper(scanner_name, s);
+        auto w = get_wrapper(scanner_name, charset);
         if (!w) {
             cerr << "No such scanner: " << scanner_name << "\n";
             exit(1);
@@ -190,7 +186,7 @@ int main(int argc, char * argv[]) {
             log_matcher(*w, corpus);
             break;
         case VERIFY: {
-            auto wg = get_wrapper_charsetgold(s);
+            auto wg = get_ground_truth_wrapper(scanner_name, charset);
             verify_matchers(*w, *wg, corpus);
             break;
         }

@@ -10,11 +10,13 @@
 
 #include <iostream>
 
+
 class Vermicelli {
     m256 and_mask;
     m256 cmp_mask;
 public:
     Vermicelli(const std::set<u8> & in) {
+        
         if (in.size() > 2) {
             throw std::logic_error("Vermicelli only supports 1-2 characters for now.");
         }
@@ -36,6 +38,7 @@ public:
         }
         and_mask = _mm256_set1_epi8(msk);
         cmp_mask = _mm256_set1_epi8(cmp);
+        
     }
     
     u32 vermicelli_op(m256 input) {
