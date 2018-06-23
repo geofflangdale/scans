@@ -14,6 +14,10 @@ std::unique_ptr<WrapperBase> get_wrapper_vermicelli(const std::set<u8> & in);
 std::unique_ptr<WrapperBase> get_wrapper_charsetgold(const std::set<u8> & in);
 
 std::unique_ptr<WrapperBase> get_wrapper_dverm(const DoubleCharsetWorkload & in);
+std::unique_ptr<WrapperBase> get_wrapper_dshufti(const DoubleCharsetWorkload & in);
+std::unique_ptr<WrapperBase> get_wrapper_dtruffle(const DoubleCharsetWorkload & in);
+std::unique_ptr<WrapperBase> get_wrapper_vermshuf(const DoubleCharsetWorkload & in);
+std::unique_ptr<WrapperBase> get_wrapper_shufverm(const DoubleCharsetWorkload & in);
 std::unique_ptr<WrapperBase> get_wrapper_doublesetgold(const DoubleCharsetWorkload & in);
 
 // add a proper parser later
@@ -56,6 +60,14 @@ unique_ptr<WrapperBase> get_wrapper(string name, string workload) {
         return get_wrapper_vermicelli(workload_to_charset(workload));
     } else if (name == "dverm") {
         return get_wrapper_dverm(workload_to_double_char_set(workload));
+    } else if (name == "dshufti") {
+        return get_wrapper_dshufti(workload_to_double_char_set(workload));
+    } else if (name == "dtruffle") {
+        return get_wrapper_dtruffle(workload_to_double_char_set(workload));
+    } else if (name == "vermshuf") {
+        return get_wrapper_vermshuf(workload_to_double_char_set(workload));
+    } else if (name == "shufverm") {
+        return get_wrapper_shufverm(workload_to_double_char_set(workload));
     } else if (name == "doublesetgold") {
         return get_wrapper_doublesetgold(workload_to_double_char_set(workload));
     }
@@ -67,7 +79,11 @@ unique_ptr<WrapperBase> get_ground_truth_wrapper(string name, string workload) {
         { "truffle", "charsetgold" },
         { "shufti", "charsetgold" },
         { "vermicelli", "charsetgold" },
-        { "dverm", "doublesetgold" }
+        { "dverm", "doublesetgold" },
+        { "dshufti", "doublesetgold" },
+        { "dtruffle", "doublesetgold" },
+        { "vermshuf", "doublesetgold" },
+        { "shufverm", "doublesetgold" }
     };
     if (m.find(name) == m.end()) {
         throw logic_error("No ground truth matcher for " + name);

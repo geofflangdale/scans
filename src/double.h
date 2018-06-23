@@ -6,13 +6,15 @@
 #include "common_defs.h"
 #include "util.h"
 #include "scans.h"
-#include "vermicelli.h"
 
-class DVerm {
-    Vermicelli sub[2];
+template<typename T0, u32 (T0::*op0)(m256 input),
+         typename T1, u32 (T1::*op1)(m256 input)>
+class DoubleMatcher {
+    T0 s0;
+    T1 s1;
     u32 distance;
 public:
-    DVerm(const DoubleCharsetWorkload & work) : sub({std::get<0>(work), std::get<1>(work)}) {
+    DoubleMatcher(const DoubleCharsetWorkload & work) : s0(std::get<0>(work)), s1(std::get<1>(work)) {
         distance = std::get<2>(work);
         if (distance == 0) {
             throw std::logic_error("Can't have distance == 0");
@@ -23,7 +25,9 @@ public:
     }
 
     void scan(InputBlock input, std::vector<u32> & out, UNUSED std::vector<u8> & tmp) {
-        apply_double_scanner_op<Vermicelli, &Vermicelli::vermicelli_op,
-                                Vermicelli, &Vermicelli::vermicelli_op>(sub[0], sub[1], distance, input, out);
+        apply_double_scanner_op<T0, op0,
+                                T1, op1>(s0, s1, distance, input, out);
     }
 };
+
+
