@@ -24,7 +24,7 @@ public:
         }
     }
 
-    void scan(InputBlock input, std::vector<u32> & out, UNUSED std::vector<u8> & tmp) {
+    void scan(InputBlock input, std::vector<u32> & out) {
         apply_double_scanner_op<T0, op0,
                                 T1, op1>(s0, s1, distance, input, out);
     }

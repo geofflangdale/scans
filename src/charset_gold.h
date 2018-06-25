@@ -12,7 +12,7 @@ public:
     CharsetGold(const std::set<u8> & s_in) : s(s_in) {
     }
 
-    void scan(InputBlock input, std::vector<u32> & out, UNUSED std::vector<u8> & tmp) {
+    void scan(InputBlock input, std::vector<u32> & out) {
         u32 result_idx = 0;
         u8 * buf = input.first;
         size_t len = input.second;

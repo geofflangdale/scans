@@ -45,7 +45,7 @@ public:
         return ~(u32)_mm256_movemask_epi8(t5);
     }
 
-    void scan(InputBlock input, std::vector<u32> & out, UNUSED std::vector<u8> & tmp) {
+    void scan(InputBlock input, std::vector<u32> & out) {
         apply_scanner_op<Truffle, &Truffle::truffle_op>(*this, input, out);
     }
 };
