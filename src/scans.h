@@ -11,6 +11,12 @@
 
 #include <iostream>
 typedef u32 OffsetResult;
+typedef std::pair<u32, u32> OffsetIDResult;
+
+inline std::ostream & operator<<(std::ostream & stream, const OffsetIDResult & r) {
+    stream << r.first << "/" << r.second;
+    return stream;
+}
 
 // result handling
 class ResultBase {
@@ -39,7 +45,9 @@ public:
     }
 
     virtual void dump_results(std::ostream & os) {
-        std::copy(results.begin(), results.end(), std::ostream_iterator<T>(os, "\n"));
+        for (auto r : results) {
+            os << r << "\n";
+        }
     }
 
     virtual bool operator!=(const ResultBase & rb) const {

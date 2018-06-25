@@ -12,7 +12,7 @@
 // p2 should probably not span cache lines if that can be avoided (again, this is a convention)
 
 // from HS
-u64 theirtoupper64(const u64 x) {
+inline u64 theirtoupper64(const u64 x) {
 	u64 b = 0x8080808080808080ull | x;
 	u64 c = b - 0x6161616161616161ull;
 	u64 d = ~(b - 0x7b7b7b7b7b7b7b7bull);
@@ -23,7 +23,7 @@ u64 theirtoupper64(const u64 x) {
 
 const int COMPARE_SIZE = 8;
 
-bool compare(const u8 * p1, const u8 * p2, size_t len) {
+inline bool compare(const u8 * p1, const u8 * p2, size_t len) {
 	for (u32 i = 0; i < len; i++) {
 		if (p1[i] != p2[i]) {
 			return false;
@@ -33,7 +33,7 @@ bool compare(const u8 * p1, const u8 * p2, size_t len) {
 }
 
 // a further convention - p2 has already been 'touppered'
-bool compareNoCase(const u8 * p1, const u8 * p2, size_t len) {
+inline bool compareNoCase(const u8 * p1, const u8 * p2, size_t len) {
 	for (u32 i = 0; i < len; i++) {
 		if (toupper(p1[i]) != p2[i]) {
 			return false;

@@ -3,6 +3,7 @@
 #include <string>
 #include <utility>
 #include "common_defs.h"
+#include "compare.h"
 
 struct Literal {
 	u32 id;
@@ -24,4 +25,13 @@ struct Literal {
 		}
 		return std::make_pair(cmp, msk);
 	}
+
+    // low performance compare for 'gold' version only
+    bool cmp_at(const u8 * location) {
+        if (caseless) {
+            return compareNoCase(location, (const u8 *)s.c_str(), s.size());
+        } else {
+            return compare(location, (const u8 *)s.c_str(), s.size());
+        }
+    }
 };

@@ -29,7 +29,7 @@ InputBlock get_corpus(string filename) {
 
         char * aligned_buffer;
         if (posix_memalign( (void **)&aligned_buffer, 64, ROUNDUP_N(length, 64))) {
-            cerr << "Could not allocate memory\n";
+            cerr << "Could not allocate memory for corpus\n";
             exit(1);
         };
 		is.read(aligned_buffer, length);
@@ -37,40 +37,10 @@ InputBlock get_corpus(string filename) {
 		return make_pair((u8 *)aligned_buffer, length);
 	}
 	else {
-        cerr << "Couldn't open file: " << filename << "\n";
+        cerr << "Couldn't open corpus file: " << filename << "\n";
         exit(1);
     }
 }
-
-// replace with a JSON file containing my own signature format
-// can build this up slowly
-// use RapidJSON to slurp in this file
-// starting scans are mostly acceleration-only so they could be passed in pretty easily
-// on the command line
-
-bool get_signatures(string filename, vector<Literal> & lits) {
-	// reads 'filename', gets lits into vector
-	// format is id, string/regex, flags, type
-	// separator is : after id then / everywhere else
-	ifstream is(filename);
-	string s;
-	while (std::getline(is, s)) {
-		auto id_end = s.find_first_of(":");
-		auto type_start = s.find_last_of("/");
-		auto flags_start = s.find_last_of("/", type_start - 1);
-		u32 id = atoi(s.substr(0, id_end).c_str());
-		string val = s.substr(id_end + 2, flags_start - id_end - 2);
-		string flags = s.substr(flags_start + 1, type_start - flags_start - 1);
-		string type = s.substr(type_start + 1);
-		assert(type == "lit");
-		bool caseless = flags == "i"; // only flag we support
-		// TODO: if caseless, need to squish 'val' and make it all upper case to match
-		// our check semantics
-		lits.emplace_back(Literal{ id, val, caseless });
-	}
-	return true;
-}
-
 
 void run_benchmarks(WrapperBase & w, InputBlock corpus, int repeats,
                     bool dump_times) {
@@ -127,7 +97,8 @@ int main(int argc, char * argv[]) {
     typedef enum { BENCHMARK, VERIFY, LOG } CommandType;
     CommandType command = BENCHMARK;
     string corpus_file("in.txt");
-    string charset("Zz"); // by default, something dumb
+    string workload; // by default, something dumb
+    string workload_file; // by default, something dumb
     auto cli = Help (show_help)
              | Opt( repeats, "repeats" )
                     ["-r"]["--repeats"]
@@ -138,9 +109,12 @@ int main(int argc, char * argv[]) {
              | Opt (scanner_name, "scanner_name")
                     ["-s"]["--scanner"] 
                     ("Which scanner to use")
-             | Opt ( charset, "charset")
-                    ["--charset"]
-                    ("Character set to scan for")
+             | Opt ( workload, "workload")
+                    ["-w"]["--workload"]
+                    ("String set or character set to scan for")
+             | Opt ( workload_file, "workload_file")
+                    ["--workload-file"]
+                    ("A file containing the string set or character set to scan for")
              | Opt( corpus_file, "corpus" )
                     ["-c"]["--corpus"]
                     ("Name of corpus file")
@@ -169,16 +143,36 @@ int main(int argc, char * argv[]) {
         cerr << "Can't have 0 repeats\n";
         exit(1);
     }
-
+    
     if (show_help) {
         cerr << cli << "\n";
         exit(1);
+    }
+    if (workload.empty() && workload_file.empty()) {
+        cerr << "Must specify either a command-line workload or a workload file\n";
+        exit(1);
+    }
+
+    if (!workload.empty() && !workload_file.empty()) {
+        cerr << "Cannot specify both a command-line workload or a workload file\n";
+        exit(1);
+    }
+
+    if (!workload_file.empty()) {
+        std::ifstream t(workload_file);
+        if (!t) {
+            cerr << "Couldn't open workload file: " << workload_file << "\n";
+            exit(1);
+        }
+        std::stringstream buf;
+        buf << t.rdbuf(); 
+        workload = buf.str();
     }
 
     auto corpus = get_corpus(corpus_file);
 
     try {
-        auto w = get_wrapper(scanner_name, charset);
+        auto w = get_wrapper(scanner_name, workload);
         if (!w) {
             cerr << "No such scanner: " << scanner_name << "\n";
             exit(1);
@@ -189,7 +183,7 @@ int main(int argc, char * argv[]) {
             log_matcher(*w, corpus);
             break;
         case VERIFY: {
-            auto wg = get_ground_truth_wrapper(scanner_name, charset);
+            auto wg = get_ground_truth_wrapper(scanner_name, workload);
             verify_matchers(*w, *wg, corpus);
             break;
         }

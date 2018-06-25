@@ -1,11 +1,13 @@
-#include "public.h"
-
 #include <memory>
 #include <map>
 #include <set>
 #include <tuple>
-
 #include <iostream>
+#include <sstream>
+
+#include "public.h"
+#include "literal.h"
+
 using namespace std;
 
 std::unique_ptr<WrapperBase> get_wrapper_truffle(const std::set<u8> & in);
@@ -19,6 +21,8 @@ std::unique_ptr<WrapperBase> get_wrapper_dtruffle(const DoubleCharsetWorkload & 
 std::unique_ptr<WrapperBase> get_wrapper_vermshuf(const DoubleCharsetWorkload & in);
 std::unique_ptr<WrapperBase> get_wrapper_shufverm(const DoubleCharsetWorkload & in);
 std::unique_ptr<WrapperBase> get_wrapper_doublesetgold(const DoubleCharsetWorkload & in);
+
+std::unique_ptr<WrapperBase> get_wrapper_literalgold(const std::vector<Literal> & in);
 
 // add a proper parser later
 set<u8> workload_to_charset(string s) {
@@ -47,6 +51,31 @@ DoubleCharsetWorkload workload_to_double_char_set(string s) {
     return make_tuple(s1, s2, dist);
 }
 
+// reads 'filename', gets lits into vector
+// format is id, string/regex, flags, type
+// separator is : after id then / everywhere else
+
+vector<Literal> workload_to_lit_vector(string workload_string) {
+    vector<Literal> lits;
+	stringstream is(workload_string);
+	string s;
+	while (std::getline(is, s)) {
+		auto id_end = s.find_first_of(":");
+		auto type_start = s.find_last_of("/");
+		auto flags_start = s.find_last_of("/", type_start - 1);
+		u32 id = atoi(s.substr(0, id_end).c_str());
+		string val = s.substr(id_end + 1, flags_start - id_end - 2);
+		string flags = s.substr(flags_start + 1, type_start - flags_start - 1);
+		string type = s.substr(type_start + 1);
+		assert(type == "lit");
+		bool caseless = flags == "i"; // only flag we support
+		// TODO: if caseless, need to squish 'val' and make it all upper case to match
+		// our check semantics
+		lits.emplace_back(Literal{ id, val, caseless });
+	}
+    return lits;
+}
+
 unique_ptr<WrapperBase> get_wrapper(string name, string workload) {
     // just copy our workload string as a char set for now
     set<u8> in(workload.begin(), workload.end());
@@ -70,6 +99,8 @@ unique_ptr<WrapperBase> get_wrapper(string name, string workload) {
         return get_wrapper_shufverm(workload_to_double_char_set(workload));
     } else if (name == "doublesetgold") {
         return get_wrapper_doublesetgold(workload_to_double_char_set(workload));
+    } else if (name == "literalgold") {
+        return get_wrapper_literalgold(workload_to_lit_vector(workload));
     }
     throw logic_error("No such matcher exists: " + name);
 }
