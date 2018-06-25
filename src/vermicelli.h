@@ -15,6 +15,8 @@ class Vermicelli {
     m256 and_mask;
     m256 cmp_mask;
 public:
+    typedef OffsetResult ResultType;
+
     Vermicelli(const std::set<u8> & in) {
         
         if (in.size() > 2) {
@@ -46,7 +48,7 @@ public:
         return (u32)_mm256_movemask_epi8(t);
     }
 
-    void scan(InputBlock input, std::vector<u32> & out) {
+    void scan(InputBlock input, Result<ResultType> & out) {
         apply_scanner_op<Vermicelli, &Vermicelli::vermicelli_op>(*this, input, out);
     }
 };

@@ -12,6 +12,8 @@ class Shufti {
     m256 lo;
     m256 hi;
 public:
+    typedef OffsetResult ResultType;
+
     Shufti(const std::set<u8> & in) {
         m128 lo_nibble_mask = _mm_set1_epi8(0);
         m128 hi_nibble_mask = _mm_set1_epi8(0);
@@ -43,7 +45,7 @@ public:
         return ~(u32)_mm256_movemask_epi8(t4);
     }
 
-    void scan(InputBlock input, std::vector<u32> & out) {
+    void scan(InputBlock input, Result<ResultType> & out) {
         apply_scanner_op<Shufti, &Shufti::shufti_op>(*this, input, out);
     }
 };

@@ -18,6 +18,8 @@ class Truffle {
     );
     
 public:
+    typedef OffsetResult ResultType;
+
     Truffle(const std::set<u8> & in) {
         m128 lo_tmp = _mm_set1_epi8(0);
         m128 hi_tmp = _mm_set1_epi8(0);
@@ -45,7 +47,7 @@ public:
         return ~(u32)_mm256_movemask_epi8(t5);
     }
 
-    void scan(InputBlock input, std::vector<u32> & out) {
+    void scan(InputBlock input, Result<ResultType> & out) {
         apply_scanner_op<Truffle, &Truffle::truffle_op>(*this, input, out);
     }
 };

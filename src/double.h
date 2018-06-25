@@ -14,6 +14,8 @@ class DoubleMatcher {
     T1 s1;
     u32 distance;
 public:
+    typedef typename T0::ResultType ResultType;
+
     DoubleMatcher(const DoubleCharsetWorkload & work) : s0(std::get<0>(work)), s1(std::get<1>(work)) {
         distance = std::get<2>(work);
         if (distance == 0) {
@@ -24,7 +26,7 @@ public:
         }
     }
 
-    void scan(InputBlock input, std::vector<u32> & out) {
+    void scan(InputBlock input, Result<ResultType> & out) {
         apply_double_scanner_op<T0, op0,
                                 T1, op1>(s0, s1, distance, input, out);
     }

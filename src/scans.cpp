@@ -85,29 +85,32 @@ void run_benchmarks(WrapperBase & w, InputBlock corpus, int repeats,
 
 void log_matcher(WrapperBase & w, InputBlock corpus) {
     auto out = w.log(corpus);
-    copy(out.begin(), out.end(), ostream_iterator<u32>(cout, "\n"));
+    out->dump_results(cout);
+    delete out;
 }
 
 bool verify_matchers(WrapperBase & w, WrapperBase & w_gold, InputBlock corpus) {
     auto out = w.log(corpus);
     auto out_gold = w_gold.log(corpus);
 
-    if (out != out_gold) {
+    if (*out != *out_gold) {
         cout << "Error: results don't match\n";
 
-        cout << "Matcher produced " << out.size() << " matches\n";
-        cout << "Reference produced " << out_gold.size() << " matches\n";
+        cout << "Matcher produced " << out->get_size() << " matches\n";
+        cout << "Reference produced " << out_gold->get_size() << " matches\n";
         cout << "Results: \n";
-        copy(out.begin(), out.end(), ostream_iterator<double>(cout, "\n"));
+        out->dump_results(cout);
         cout << "\n";
 
         cout << "Results2: \n";
-        copy(out_gold.begin(), out_gold.end(), ostream_iterator<double>(cout, "\n"));
+        out_gold->dump_results(cout);
         cout << "\n";
         return false;
     } else {
-        cout << "Result OK. Matcher produced " << out.size() << " matches\n";
+        cout << "Result OK. Matcher produced " << out->get_size() << " matches\n";
     }
+    delete out;
+    delete out_gold;
     return true;
 }
 
