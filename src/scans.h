@@ -98,9 +98,19 @@ inline void flatten_results(u64 res, u32 & result_idx, R & results, size_t idx, 
     }
 }
 
-// logic is painfully similar for this scanner op, double_scanner_op and no doubt most other things
-// that use SIMD although many will have their own granularities require and forward/backward reading
-// constraints
+template<typename T, u32 (T::*op)(m256 input)>
+inline u64 op64(T & scanner, const u8 * location) {
+    m256 input_0 = _mm256_load_si256((const m256 *)(location));
+    m256 input_1 = _mm256_load_si256((const m256 *)(location+32));
+    return (scanner.*op)(input_0) | ((u64)(scanner.*op)(input_1) << 32);
+}
+
+template<typename T, u32 (T::*op)(m256 input)>
+inline u64 op64u(T & scanner, const u8 * location) {
+    m256 input_0 = _mm256_loadu_si256((const m256 *)(location));
+    m256 input_1 = _mm256_loadu_si256((const m256 *)(location+32));
+    return (scanner.*op)(input_0) | ((u64)(scanner.*op)(input_1) << 32);
+}
 
 template<typename T, u32 (T::*op)(m256 input)>
 inline void apply_scanner_op(T & scanner, InputBlock input, Result<typename T::ResultType> & out) {
@@ -109,52 +119,37 @@ inline void apply_scanner_op(T & scanner, InputBlock input, Result<typename T::R
         
         size_t effective_length = input.end - input.start;
         if (effective_length <= 64) {
-            union {
-                u8 tmp[64];
-                m256 inputs[2];
-            } u __attribute__((aligned(64)));
-            memcpy(u.tmp, buf + input.start, effective_length);
-            u64 res = (scanner.*op)(u.inputs[0]) | ((u64)(scanner.*op)(u.inputs[1]) << 32);
-            // switch off top (64-effective_length) bits 
-            res &= ~( ((u64)-1) << effective_length);
+            u8 tmp[64] __attribute__((aligned(64)));
+            memcpy(tmp + (64-effective_length), buf + input.start, effective_length);
+            u64 res = op64<T, op>(scanner, &tmp[0]);
+            res <<= (64-effective_length);
             flatten_results(res, result_idx, out.results, input.start, 0);
         } else {
             size_t idx = input.start;
             size_t effective_start_alignment = ((u64)(buf + idx)) & 0x3f;
 
-            // warm up by processing to a cache line shifting our results to eliminate
-            // bogus ones
-
-            // TODO: switch to a model where you shift the results to the end of the register
-            //       and adjust idx accordingly. This gneralizes better to the double scanner
-            //       as that puts the bits in the right place
-
+            // warm up by processing to a cache line shifting our results to eliminate bogus results
             // if we aren't 64-aligned to start with, we need to process (64-effective_start_alignment)
             // bytes. We will process them from buf+start as we know we can process 64 bytes safely
             if (effective_start_alignment) {
-                m256 input_0 = _mm256_loadu_si256((const m256 *)(buf + idx));
-                m256 input_1 = _mm256_loadu_si256((const m256 *)(buf + idx + 32));
-                u64 res = (scanner.*op)(input_0) | ((u64)(scanner.*op)(input_1) << 32);
-                // we are only processing (64-effective_start_alignment) bits or we will get duplicate results
-                res &= ( ((u64)-1) >> effective_start_alignment);
-                flatten_results(res, result_idx, out.results, idx, 0);
+                u64 res = op64u<T, op>(scanner, buf + idx);
+                res <<= effective_start_alignment;
+                flatten_results(res, result_idx, out.results, idx, effective_start_alignment);
                 idx += 64-effective_start_alignment;
             }
             
-            // main loop becomes processing cache lines only
+            // main loop: process whole cache lines. There's about 10% (55->60) from a aggressive unroll
+            // but it's pretty ridiculous past a point
             for (; idx + 63 < input.end; idx+=64) {
                 __builtin_prefetch(buf + idx + 64*64);
-                m256 input_0 = _mm256_load_si256((const m256 *)(buf + idx));
-                m256 input_1 = _mm256_load_si256((const m256 *)(buf + idx + 32));
-                u64 res = (scanner.*op)(input_0) | ((u64)(scanner.*op)(input_1) << 32);
+                u64 res = op64<T, op>(scanner, buf + idx);
                 flatten_results(res, result_idx, out.results, idx, 0);
             }
+
             if (idx < input.end) {
-                // cool down. Reading last 64 bytes of the buffer, scan them, and trim
+                // cool down. Read last 64 bytes of the buffer, scan them, and trim
                 // off any spurious bits we've already seen
-                m256 input_0 = _mm256_loadu_si256((const m256 *)(buf + input.end - 65));
-                m256 input_1 = _mm256_loadu_si256((const m256 *)(buf + input.end - 33));
-                u64 res = (scanner.*op)(input_0) | ((u64)(scanner.*op)(input_1) << 32);
+                u64 res = op64u<T, op>(scanner, buf + input.end - 64); 
                 // trim off overlap
                 res >>= (64 - (input.end - idx));
                 flatten_results(res, result_idx, out.results, idx, 0);
@@ -165,27 +160,63 @@ inline void apply_scanner_op(T & scanner, InputBlock input, Result<typename T::R
 }
 
 // scanner1 is earlier, scanner2 is later, they are separated by distance (!=0)
-
 template<typename T1, u32 (T1::*op1)(m256 input),
          typename T2, u32 (T2::*op2)(m256 input)>
 inline void apply_double_scanner_op(T1 & scanner1, T2 & scanner2, u32 distance,
                                     InputBlock input, Result<typename T1::ResultType> & out) {
         const u8 * buf = input.buf;
-        size_t len = input.len;
         u32 result_idx = 0;
 
-        u64 old_res_scan_0 = 0;
-        for (size_t idx = 0; idx < len; idx+=64) {
-            __builtin_prefetch(buf + idx + 64*64);
-            m256 input_0 = _mm256_load_si256((const m256 *)(buf + idx));
-            m256 input_1 = _mm256_load_si256((const m256 *)(buf + idx + 32));
-            u64 res_scan_0 = (scanner1.*op1)(input_0) | ((u64)(scanner1.*op1)(input_1) << 32);
-            u64 res_scan_1 = (scanner2.*op2)(input_0) | ((u64)(scanner2.*op2)(input_1) << 32);
+        u64 old_res_0 = 0;
+        
+        size_t effective_length = input.end - input.start;
+        if (effective_length <= 64) {
+            u8 tmp[64] __attribute__((aligned(64)));
+            memcpy(tmp + (64-effective_length), buf + input.start, effective_length);
+            u64 res_0 = op64<T1, op1>(scanner1, &tmp[0]);
+            u64 res_1 = op64<T2, op2>(scanner2, &tmp[0]);
+            u64 res = res_1 & ((res_0 << distance) | (old_res_0 >> (64-distance)));
+            res <<= (64-effective_length);
+            flatten_results(res, result_idx, out.results, input.start, 0);
+        } else {
+            size_t idx = input.start;
+            size_t effective_start_alignment = ((u64)(buf + idx)) & 0x3f;
 
-            u64 res = res_scan_1 & ((res_scan_0 << distance) | (old_res_scan_0 >> (64-distance)));
-            old_res_scan_0 = res_scan_0;
+            // warm up by processing to a cache line shifting our results to eliminate bogus results
+            // if we aren't 64-aligned to start with, we need to process (64-effective_start_alignment)
+            // bytes. We will process them from buf+start as we know we can process 64 bytes safely
+            if (effective_start_alignment) {
+                u64 res_0 = op64u<T1, op1>(scanner1, buf + idx);
+                u64 res_1 = op64u<T2, op2>(scanner2, buf + idx);
+                u64 res = res_1 & ((res_0 << distance) | (old_res_0 >> (64-distance)));
+                old_res_0 = res_0;
+                res <<= effective_start_alignment;
+                old_res_0 <<= effective_start_alignment;
+                flatten_results(res, result_idx, out.results, idx, effective_start_alignment);
+                idx += 64-effective_start_alignment;
+            }
+            
+            // main loop: process whole cache lines. 
+            for (; idx + 63 < input.end; idx+=64) {
+                __builtin_prefetch(buf + idx + 64*64);
+                u64 res_0 = op64u<T1, op1>(scanner1, buf + idx);
+                u64 res_1 = op64u<T2, op2>(scanner2, buf + idx);
+                u64 res = res_1 & ((res_0 << distance) | (old_res_0 >> (64-distance)));
+                old_res_0 = res_0;
+                flatten_results(res, result_idx, out.results, idx, 0);
+            }
 
-            flatten_results(res, result_idx, out.results, idx, 0);
+            if (idx < input.end) {
+                // cool down. Read last 64 bytes of the buffer, scan them, and trim
+                // off any spurious bits we've already seen
+                u64 res_0 = op64u<T1, op1>(scanner1, buf + input.end - 64);
+                u64 res_1 = op64u<T2, op2>(scanner2, buf + input.end - 64);
+                u64 res = res_1 & ((res_0 << distance) | (old_res_0 >> (64-distance)));
+                // trim off overlap
+                res >>= (64 - (input.end - idx));
+                flatten_results(res, result_idx, out.results, idx, 0);
+            }
+
         }
         out.trim(result_idx);
 }
