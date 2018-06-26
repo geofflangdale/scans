@@ -7,6 +7,7 @@
 #include <ostream>
 #include <fstream>
 #include <iterator>
+#include <cstring>
 #include "common_defs.h"
 
 #include <iostream>
@@ -62,24 +63,103 @@ public:
 };
 
 
-typedef std::pair<u8 *, size_t> InputBlock;
+class InputBlock {
+public:
+    const u8 * buf;
+    size_t len;
+    size_t start; // where to start scanning in the block
+    size_t end;   // where to finish scanning
 
-// any bulk bytes->bits->indexes operation scan can be phrased this way
-// TODO: write the boring code that handles small inputs, proper warm-up and cooldown
+    // These are a bit future-proofish. I think having a soft_start/soft_end make a good
+    // deal of sense for using this BLSE formulation to (say) split a single scan up into
+    // more tractable worst-case size scans (i.e. staying <4GB or <64KB
+
+    bool hard_start = false; // hard_start means we can't look at 0..start-1 for context
+    bool hard_end = false;   // hard_end means we can't look at end..len-1 for context
+
+    InputBlock(const u8 * buf_in, size_t len_in, size_t start_in, size_t end_in) :
+        buf(buf_in), len(len_in), start(start_in), end(end_in) {
+        
+        assert(start <= end);
+        assert(end <= len);
+    }
+
+
+    size_t bytes_to_scan() {
+        return end-start;
+    }
+};
+
+template<typename R> 
+inline void flatten_results(u64 res, u32 & result_idx, R & results, size_t idx, u32 adjust_downward = 0) {
+    while (res) {
+        results[result_idx++] = (u32)idx + __builtin_ctzll(res) - adjust_downward;
+        res &= res - 1ULL;
+    }
+}
+
+// logic is painfully similar for this scanner op, double_scanner_op and no doubt most other things
+// that use SIMD although many will have their own granularities require and forward/backward reading
+// constraints
+
 template<typename T, u32 (T::*op)(m256 input)>
 inline void apply_scanner_op(T & scanner, InputBlock input, Result<typename T::ResultType> & out) {
-        u8 * buf = input.first;
-        size_t len = input.second;
+        const u8 * buf = input.buf;
         u32 result_idx = 0;
-        for (size_t idx = 0; idx < len; idx+=64) {
-            __builtin_prefetch(buf + idx + 64*64);
-            m256 input_0 = _mm256_load_si256((const m256 *)(buf + idx));
-            m256 input_1 = _mm256_load_si256((const m256 *)(buf + idx + 32));
-            u64 res = (scanner.*op)(input_0) | ((u64)(scanner.*op)(input_1) << 32);
-            while (res) {
-                out.results[result_idx++] = (u32)idx + __builtin_ctzll(res);
-                res &= res - 1ULL;
+        
+        size_t effective_length = input.end - input.start;
+        if (effective_length <= 64) {
+            union {
+                u8 tmp[64];
+                m256 inputs[2];
+            } u __attribute__((aligned(64)));
+            memcpy(u.tmp, buf + input.start, effective_length);
+            u64 res = (scanner.*op)(u.inputs[0]) | ((u64)(scanner.*op)(u.inputs[1]) << 32);
+            // switch off top (64-effective_length) bits 
+            res &= ~( ((u64)-1) << effective_length);
+            flatten_results(res, result_idx, out.results, input.start, 0);
+        } else {
+            size_t idx = input.start;
+            size_t effective_start_alignment = ((u64)(buf + idx)) & 0x3f;
+
+            // warm up by processing to a cache line shifting our results to eliminate
+            // bogus ones
+
+            // TODO: switch to a model where you shift the results to the end of the register
+            //       and adjust idx accordingly. This gneralizes better to the double scanner
+            //       as that puts the bits in the right place
+
+            // if we aren't 64-aligned to start with, we need to process (64-effective_start_alignment)
+            // bytes. We will process them from buf+start as we know we can process 64 bytes safely
+            if (effective_start_alignment) {
+                m256 input_0 = _mm256_loadu_si256((const m256 *)(buf + idx));
+                m256 input_1 = _mm256_loadu_si256((const m256 *)(buf + idx + 32));
+                u64 res = (scanner.*op)(input_0) | ((u64)(scanner.*op)(input_1) << 32);
+                // we are only processing (64-effective_start_alignment) bits or we will get duplicate results
+                res &= ( ((u64)-1) >> effective_start_alignment);
+                flatten_results(res, result_idx, out.results, idx, 0);
+                idx += 64-effective_start_alignment;
             }
+            
+            // main loop becomes processing cache lines only
+            for (; idx + 63 < input.end; idx+=64) {
+                __builtin_prefetch(buf + idx + 64*64);
+                m256 input_0 = _mm256_load_si256((const m256 *)(buf + idx));
+                m256 input_1 = _mm256_load_si256((const m256 *)(buf + idx + 32));
+                u64 res = (scanner.*op)(input_0) | ((u64)(scanner.*op)(input_1) << 32);
+                flatten_results(res, result_idx, out.results, idx, 0);
+            }
+            if (idx < input.end) {
+                // cool down. Reading last 64 bytes of the buffer, scan them, and trim
+                // off any spurious bits we've already seen
+                m256 input_0 = _mm256_loadu_si256((const m256 *)(buf + input.end - 65));
+                m256 input_1 = _mm256_loadu_si256((const m256 *)(buf + input.end - 33));
+                u64 res = (scanner.*op)(input_0) | ((u64)(scanner.*op)(input_1) << 32);
+                // trim off overlap
+                res >>= (64 - (input.end - idx));
+                flatten_results(res, result_idx, out.results, idx, 0);
+            }
+
         }
         out.trim(result_idx);
 }
@@ -90,8 +170,8 @@ template<typename T1, u32 (T1::*op1)(m256 input),
          typename T2, u32 (T2::*op2)(m256 input)>
 inline void apply_double_scanner_op(T1 & scanner1, T2 & scanner2, u32 distance,
                                     InputBlock input, Result<typename T1::ResultType> & out) {
-        u8 * buf = input.first;
-        size_t len = input.second;
+        const u8 * buf = input.buf;
+        size_t len = input.len;
         u32 result_idx = 0;
 
         u64 old_res_scan_0 = 0;
@@ -105,10 +185,7 @@ inline void apply_double_scanner_op(T1 & scanner1, T2 & scanner2, u32 distance,
             u64 res = res_scan_1 & ((res_scan_0 << distance) | (old_res_scan_0 >> (64-distance)));
             old_res_scan_0 = res_scan_0;
 
-            while (res) {
-                out.results[result_idx++] = (u32)idx + __builtin_ctzll(res);
-                res &= res - 1ULL;
-            }
+            flatten_results(res, result_idx, out.results, idx, 0);
         }
         out.trim(result_idx);
 }
@@ -126,7 +203,7 @@ public:
     Wrapper(T scanner_in) : scanner(scanner_in) {}
 
     virtual std::vector<double> benchmark(InputBlock input, u32 repeats) {
-        Result<typename T::ResultType> out(input.second);
+        Result<typename T::ResultType> out(input.bytes_to_scan());
         std::vector<double> times;
         times.reserve(repeats);
         for (u32 i = 0; i < repeats; ++i) {
@@ -140,7 +217,7 @@ public:
     }
 
     virtual ResultBase * log(InputBlock input) {
-        Result<typename T::ResultType> * out = new Result<typename T::ResultType>(input.second);
+        Result<typename T::ResultType> * out = new Result<typename T::ResultType>(input.bytes_to_scan());
         scanner.scan(input, *out);
         return out;
     }

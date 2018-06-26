@@ -16,13 +16,9 @@ public:
 
     void scan(InputBlock input, Result<ResultType> & out) {
         u32 result_idx = 0;
-        u8 * buf = input.first;
-        size_t len = input.second;
-        for (size_t idx = 0; idx < len; idx+=32) {
-            for (size_t j = idx; j < idx+32; j++) {
-                if (s.find(buf[j]) != s.end()) {
-                    out.results[result_idx++] = j;
-                }
+        for (size_t i = input.start; i < input.end; i++) {
+            if (s.find(input.buf[i]) != s.end()) {
+                out.results[result_idx++] = i;
             }
         }
         out.trim(result_idx);

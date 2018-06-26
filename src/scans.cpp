@@ -34,7 +34,7 @@ InputBlock get_corpus(string filename) {
         };
 		is.read(aligned_buffer, length);
 		is.close();
-		return make_pair((u8 *)aligned_buffer, length);
+		return InputBlock((u8 *)aligned_buffer, length, 0, length);
 	}
 	else {
         cerr << "Couldn't open corpus file: " << filename << "\n";
@@ -50,7 +50,7 @@ void run_benchmarks(WrapperBase & w, InputBlock corpus, int repeats,
     } 
     auto best = min_element(res.begin(), res.end());
     cout << "Best run: " << setw(2) << *best << "s or " 
-         << (((double)corpus.second/1000000000) / *best) << " Gbytes/second\n";
+         << (((double)corpus.bytes_to_scan()/1000000000) / *best) << " Gbytes/second\n";
 }
 
 void log_matcher(WrapperBase & w, InputBlock corpus) {
@@ -68,11 +68,11 @@ bool verify_matchers(WrapperBase & w, WrapperBase & w_gold, InputBlock corpus) {
 
         cout << "Matcher produced " << out->get_size() << " matches\n";
         cout << "Reference produced " << out_gold->get_size() << " matches\n";
-        cout << "Results: \n";
+        cout << "Matcher results: \n";
         out->dump_results(cout);
         cout << "\n";
 
-        cout << "Results2: \n";
+        cout << "Reference results: \n";
         out_gold->dump_results(cout);
         cout << "\n";
         return false;
