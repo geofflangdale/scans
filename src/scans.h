@@ -53,7 +53,6 @@ public:
 
     virtual bool operator!=(const ResultBase & rb) const {
         const Result & r_other = dynamic_cast<const Result &>(rb); // throws bad_cast if this isn't allowed, which is what we want
-        std::cout <<"here!\n";
         return results != r_other.results;
     }
 

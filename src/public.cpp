@@ -22,6 +22,7 @@ std::unique_ptr<WrapperBase> get_wrapper_vermshuf(const DoubleCharsetWorkload & 
 std::unique_ptr<WrapperBase> get_wrapper_shufverm(const DoubleCharsetWorkload & in);
 std::unique_ptr<WrapperBase> get_wrapper_doublesetgold(const DoubleCharsetWorkload & in);
 
+std::unique_ptr<WrapperBase> get_wrapper_nvs(const std::vector<Literal> & in);
 std::unique_ptr<WrapperBase> get_wrapper_literalgold(const std::vector<Literal> & in);
 
 // add a proper parser later
@@ -64,7 +65,7 @@ vector<Literal> workload_to_lit_vector(string workload_string) {
 		auto type_start = s.find_last_of("/");
 		auto flags_start = s.find_last_of("/", type_start - 1);
 		u32 id = atoi(s.substr(0, id_end).c_str());
-		string val = s.substr(id_end + 1, flags_start - id_end - 2);
+		string val = s.substr(id_end + 1, flags_start - id_end - 1);
 		string flags = s.substr(flags_start + 1, type_start - flags_start - 1);
 		string type = s.substr(type_start + 1);
 		assert(type == "lit");
@@ -99,6 +100,8 @@ unique_ptr<WrapperBase> get_wrapper(string name, string workload) {
         return get_wrapper_shufverm(workload_to_double_char_set(workload));
     } else if (name == "doublesetgold") {
         return get_wrapper_doublesetgold(workload_to_double_char_set(workload));
+    } else if (name == "nvs") {
+        return get_wrapper_nvs(workload_to_lit_vector(workload));
     } else if (name == "literalgold") {
         return get_wrapper_literalgold(workload_to_lit_vector(workload));
     }
@@ -114,7 +117,8 @@ unique_ptr<WrapperBase> get_ground_truth_wrapper(string name, string workload) {
         { "dshufti", "doublesetgold" },
         { "dtruffle", "doublesetgold" },
         { "vermshuf", "doublesetgold" },
-        { "shufverm", "doublesetgold" }
+        { "shufverm", "doublesetgold" },
+        { "nvs", "literalgold" }
     };
     if (m.find(name) == m.end()) {
         throw logic_error("No ground truth matcher for " + name);

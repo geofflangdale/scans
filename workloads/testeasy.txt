@@ -1,0 +1,7 @@
+1:TwaiQ//lit
+2:surQ//lit
+3:lawQ//lit
+4:keepinQ//lit
+5:foobaQ//lit
+6:thQ//lit
+100:readerQ//lit
