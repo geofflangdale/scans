@@ -11,6 +11,13 @@
 // not, however, base any actions on the contents of buffer (should be valgrind-safe)
 // p2 should probably not span cache lines if that can be avoided (again, this is a convention)
 
+inline u8 mytoupper8(const u8 x) {
+    if (x >= 'a' && x <= 'z') {
+        return x & 0xdf;
+    } else  {
+        return x;
+    }
+}
 // from HS
 inline u64 theirtoupper64(const u64 x) {
 	u64 b = 0x8080808080808080ull | x;
@@ -35,7 +42,7 @@ inline bool compare(const u8 * p1, const u8 * p2, size_t len) {
 // a further convention - p2 has already been 'touppered'
 inline bool compareNoCase(const u8 * p1, const u8 * p2, size_t len) {
 	for (u32 i = 0; i < len; i++) {
-		if (toupper(p1[i]) != p2[i]) {
+		if (mytoupper8(p1[i]) != p2[i]) {
 			return false;
 		}
 	}

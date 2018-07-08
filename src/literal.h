@@ -31,7 +31,7 @@ struct Literal {
     // but the advantage of it is that we have a simple way to get started with using literals
     // in this context
 
-    bool compare_in(const InputBlock & input, size_t idx) const {
+    inline bool compare_in(const InputBlock & input, size_t idx) const {
         size_t effective_start = input.hard_start ? input.start : 0;
         // if literal extends beyond the effective start of this block, continue
         if (effective_start + s.size() - 1 > idx) {
