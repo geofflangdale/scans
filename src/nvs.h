@@ -171,7 +171,7 @@ class NVS {
 
     // turn this construction into the actual bytecode (current a bunch of STL things
     // but will make into a real bytecode eventually)
-    void construction_to_bytecode(UNUSED Construction & c, std::set<u32> & used_bits) {
+    void construction_to_bytecode(Construction & c, std::set<u32> & used_bits) {
         using namespace std;
         // fill in PEXT mask based on used bits
         for (auto i : used_bits) {
@@ -186,6 +186,8 @@ class NVS {
         // for now, this is a leak. Will move to putting together a fullscale bytecode
         primary_table = new u32[1 << used_bits.size()];
         memset(primary_table, 0, (1 << used_bits.size()) * sizeof(u32));
+
+        // TODO: make primary table part of bytecode, which may save on live registers
 
         u32 bytecode_size = 64; // reserve the 0 point for 'can't happen'. Blow a whole cache line.
         // preliminary: build up a bytecode by figuring out the size, then doing the thing
@@ -351,8 +353,8 @@ public:
 
         // 1. We should adapt our PEXT masks to allow multiple uses of the same input. This can be achieved 
         //    by disallowing use of the earliest 1 byte (if we want to reuse input twice) or 3 bytes (if we 
-        //    want to reuse input four times). This cuts our loads, although the perverse habit of the compiler
-        //    w.r.t. pulling PEXT masks from memory makes this even more frustrating
+        //    want to reuse input four times). This cuts our loads, and makes room in the schedule for the
+        //    loop overhead instructions (!?)
         
         // 2. We need to investigate whether putting our PEXT results into a buffer and reading a pair of i, 
         //    table is faster. I think this always winds up being a bust to be honest.
@@ -361,8 +363,11 @@ public:
         //    a C++ vector is asking for trouble. Similar loops in the past haven't displayed such weird
         //    behavior so you likely need to bite the bullet and do this properly. This means a straightforward
         //    literal matching bytecode; not a huge challenge.
+
+        u32 end_point = input.end >= 7 ? (input.end-7) : 0;
         
-        for (; i+7 < input.end; i+=8) {
+        for (; (i < end_point); i+=8) {
+        //for (; likely(i+7 < input.end); i+=8) {
             u64 v0 = *(u64 *)&input.buf[i-7];
             u64 idx_0 = _pext_u64(v0, pm);
             u32 table_0 = primary_table[idx_0];
