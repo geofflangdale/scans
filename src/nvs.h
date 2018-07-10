@@ -119,11 +119,31 @@ class NVS {
     std::vector<u32> find_good_bits(UNUSED Construction & c, u32 num_bits, std::set<u32> & used_bits) {
         std::vector<u32> good_bits;
         // debugging placeholder
+#if 0
         for (u32 bit = 63; bit > 0 && good_bits.size() < num_bits; bit--) {
             if (used_bits.find(bit) == used_bits.end()) {
                 good_bits.push_back(bit);
             }
         }
+#else
+        // testing a 'rigged' arrangement to see the effectiveness of
+        // taking low-order bits in english text
+        std::vector<u32> rigged_bits{ 56, 57, 58, 59,// 60,
+                                      48, 49, 50, 51,// 52,
+                                      40, 41, 42, 43,// 44,
+                                      32, 33, 34, 35, 36};
+
+        for (u32 i = 0; i < rigged_bits.size(); i++) {
+            u32 bit = rigged_bits[i];
+            std::cout << "Pushing " << i << " is " << bit << "\n";
+            if (used_bits.find(bit) == used_bits.end()) {
+                good_bits.push_back(bit); 
+                if (good_bits.size() == num_bits) {
+                    return good_bits;
+                }
+            }
+        }
+#endif
         return good_bits;
     }
 
@@ -178,6 +198,7 @@ class NVS {
             pext_mask |= 1ULL << i;
         }
 
+        cout << "Pext_mask 0x" << std::hex << pext_mask << std::dec << "\n";
         // make a mask of 1s for all unused high bits. We will put this into our 
         // AND mask to force a 'care zero' value for things we aren't PEXT'ing on
         u64 unused_bits_high_mask = -1;
@@ -281,7 +302,17 @@ public:
         dump_construction(std::cout, c);
 
         set<u32> used_bits;
-        const size_t BIT_LIMIT = 8;
+        
+        /*
+        for (u32 i = 0; i < 8; i++) {
+            // forbid the use of bits 0..7 in our mask
+            // we can't use these as we use a shifted-by-8
+            // version of our PEXT mask to cut the instructions
+            // in our main loop
+            used_bits.insert(i);
+        }
+        */ 
+        const size_t BIT_LIMIT = 15;
 
         while (used_bits.size() < BIT_LIMIT) {
             vector<u32> good_bits = find_good_bits(c, 1, used_bits);
@@ -351,32 +382,22 @@ public:
             v_start <<= 8;
         }
 
-        // 1. We should adapt our PEXT masks to allow multiple uses of the same input. This can be achieved 
-        //    by disallowing use of the earliest 1 byte (if we want to reuse input twice) or 3 bytes (if we 
-        //    want to reuse input four times). This cuts our loads, and makes room in the schedule for the
-        //    loop overhead instructions (!?)
-        
-        // 2. We need to investigate whether putting our PEXT results into a buffer and reading a pair of i, 
-        //    table is faster. I think this always winds up being a bust to be honest.
-
-        // 3. We should have a real run-time on the other end of this. The fact that we go off annd iterate over
-        //    a C++ vector is asking for trouble. Similar loops in the past haven't displayed such weird
-        //    behavior so you likely need to bite the bullet and do this properly. This means a straightforward
-        //    literal matching bytecode; not a huge challenge.
-
         u32 end_point = input.end >= 7 ? (input.end-7) : 0;
-        
+        // we use the shifted version of the mask to shave 4 instructions from our main loop
+        // this allows us to hit the theoretical maximum of 1 cycle per byte; this creates 
+        // just enough space to fit our loop overhead instructions in among our load->pext->load->test->branch
+        // sequence (which otherwise exactly fills up our allowable space).
+        u64 shifted_pm = pm >> 8;
+
         for (; (i < end_point); i+=8) {
-        //for (; likely(i+7 < input.end); i+=8) {
-            u64 v0 = *(u64 *)&input.buf[i-7];
-            u64 idx_0 = _pext_u64(v0, pm);
+            u64 v1 = *(u64 *)&input.buf[i-6];
+            u64 idx_0 = _pext_u64(v1, shifted_pm);
             u32 table_0 = primary_table[idx_0];
 
             if (unlikely(table_0)) {
                 handle_table(input, table_0, i, out, result_idx);
             }
 
-            u64 v1 = *(u64 *)&input.buf[i-6];
             u64 idx_1 = _pext_u64(v1, pm);
             u32 table_1 = primary_table[idx_1];
 
@@ -384,15 +405,14 @@ public:
                 handle_table(input, table_1, i+1, out, result_idx);
             }
             
-            u64 v2 = *(u64 *)&input.buf[i-5];
-            u64 idx_2 = _pext_u64(v2, pm);
+            u64 v3 = *(u64 *)&input.buf[i-4];
+            u64 idx_2 = _pext_u64(v3, shifted_pm);
             u32 table_2 = primary_table[idx_2];
 
             if (unlikely(table_2)) {
                 handle_table(input, table_2, i+2, out, result_idx);
             }
 
-            u64 v3 = *(u64 *)&input.buf[i-4];
             u64 idx_3 = _pext_u64(v3, pm);
             u32 table_3 = primary_table[idx_3];
 
@@ -400,15 +420,14 @@ public:
                 handle_table(input, table_3, i+3, out, result_idx);
             }
 
-            u64 v4 = *(u64 *)&input.buf[i-3];
-            u64 idx_4 = _pext_u64(v4, pm);
+            u64 v5 = *(u64 *)&input.buf[i-2];
+            u64 idx_4 = _pext_u64(v5, shifted_pm);
             u32 table_4 = primary_table[idx_4];
 
             if (unlikely(table_4)) {
                 handle_table(input, table_4, i+4, out, result_idx);
             }
 
-            u64 v5 = *(u64 *)&input.buf[i-2];
             u64 idx_5 = _pext_u64(v5, pm);
             u32 table_5 = primary_table[idx_5];
 
@@ -416,22 +435,20 @@ public:
                 handle_table(input, table_5, i+5, out, result_idx);
             }
 
-            u64 v6 = *(u64 *)&input.buf[i-1];
-            u64 idx_6 = _pext_u64(v6, pm);
+            u64 v7 = *(u64 *)&input.buf[i-0];
+            u64 idx_6 = _pext_u64(v7, shifted_pm);
             u32 table_6 = primary_table[idx_6];
 
             if (unlikely(table_6)) {
                 handle_table(input, table_6, i+6, out, result_idx);
             }
 
-            u64 v7 = *(u64 *)&input.buf[i-0];
             u64 idx_7 = _pext_u64(v7, pm);
             u32 table_7 = primary_table[idx_7];
 
             if (unlikely(table_7)) {
                 handle_table(input, table_7, i+7, out, result_idx);
             }
-
         }
         for (; i < input.end; i++) {
             u64 v = *(u64 *)&input.buf[i-7];
