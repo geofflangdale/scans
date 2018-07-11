@@ -7,6 +7,7 @@
 #include "compare.h"
 #include <cassert>
 #include <ostream>
+#include <algorithm>
 #include <map>
 
 #include <iostream>
@@ -117,25 +118,52 @@ class NVS {
     // however, there's a big space to explore and picking one bit at a time with a goal of making
     // the best split is pretty good.
     std::vector<u32> find_good_bits(UNUSED Construction & c, u32 num_bits, std::set<u32> & used_bits) {
+        using namespace std;
         std::vector<u32> good_bits;
-        // debugging placeholder
-#if 0
-        for (u32 bit = 63; bit > 0 && good_bits.size() < num_bits; bit--) {
-            if (used_bits.find(bit) == used_bits.end()) {
-                good_bits.push_back(bit);
+
+        u32 bit_dc[64];
+        u32 bit_one[64];
+        u32 bit_zero[64];
+        std::vector<std::pair<double, u32>> score(64);
+        for (u32 i = 0; i < 64; i++) {
+            bit_dc[i] = bit_one[i] = bit_zero[i] = 0;
+        }
+
+        for (auto & i : c) {
+            for (u32 idx : i.first) {
+                for (u32 bit = 0; bit < 64; bit++) {
+                    if (and_cmps[idx].care(bit)) {
+                        if (and_cmps[idx].one(bit)) {
+                            bit_one[bit]++;
+                        } else {
+                            bit_zero[bit]++;
+                        }
+                    } else {
+                        bit_dc[bit]++;
+                    }
+                }
             }
         }
-#else
-        // testing a 'rigged' arrangement to see the effectiveness of
-        // taking low-order bits in english text
-        std::vector<u32> rigged_bits{ 56, 57, 58, 59,// 60,
-                                      48, 49, 50, 51,// 52,
-                                      40, 41, 42, 43,// 44,
-                                      32, 33, 34, 35, 36};
+        for (u32 i = 0; i < 64; i++) {
+            const double CARE_WEIGHT = 10.0;
+            const double SPLIT_WEIGHT = 1.0;
+            double sc = CARE_WEIGHT * ((double)bit_one[i] + bit_zero[i])/((double)bit_one[i] + bit_zero[i] + bit_dc[i]); 
+            if (bit_one[i] + bit_zero[i]) {
+                sc += SPLIT_WEIGHT * 2 * ((double)(std::min(bit_one[i], bit_zero[i]))/((double)bit_one[i] + bit_zero[i]));
+            }
+            score[i] = make_pair(sc, i);
+            std::cout << "i: " << i << " dc: " << bit_dc[i] << " one: " << bit_one[i] << " zero: " << bit_zero[i] 
+                      << " score: " << score[i].first << "\n";
+        }
+    
+        std::sort(score.begin(), score.end(), [](const auto &a, const auto & b) { return a.first > b.first; });
+        for (auto i : score) {
+            std::cout << "i " << i.second << " score " << i.first << "\n";
+        }
 
-        for (u32 i = 0; i < rigged_bits.size(); i++) {
-            u32 bit = rigged_bits[i];
-            std::cout << "Pushing " << i << " is " << bit << "\n";
+        for (auto i : score) {
+            u32 bit = i.second;
+            std::cout << "Using " << bit << "\n";
             if (used_bits.find(bit) == used_bits.end()) {
                 good_bits.push_back(bit); 
                 if (good_bits.size() == num_bits) {
@@ -143,7 +171,6 @@ class NVS {
                 }
             }
         }
-#endif
         return good_bits;
     }
 
@@ -160,14 +187,11 @@ class NVS {
             for (u32 idx : i.first) {
                 if (and_cmps[idx].care(bit)) {
                     if (and_cmps[idx].one(bit)) {
-//                        std::cout << "Idx: " << idx << "->1\n";
                         one_set.insert(idx);
                     } else {
-//                        std::cout << "Idx: " << idx << "->0\n";
                         zero_set.insert(idx);
                     }
                 } else {
-//                    std::cout << "Idx: " << idx << "->0,1\n";
                     one_set.insert(idx);
                     zero_set.insert(idx);
                 }
@@ -195,7 +219,9 @@ class NVS {
         using namespace std;
         // fill in PEXT mask based on used bits
         for (auto i : used_bits) {
-            pext_mask |= 1ULL << i;
+            if (i >= 8) {
+                pext_mask |= 1ULL << i;
+            }
         }
 
         cout << "Pext_mask 0x" << std::hex << pext_mask << std::dec << "\n";
@@ -225,11 +251,11 @@ class NVS {
         u8 * tmp_ptr = bytecode + 64;
 
         for (auto & i : c) {
-            cout << "Putting these strings: ";
+/*            cout << "Putting these strings: ";
             for (auto & j : i.first) {
                 cout << j << " ";
             }
-            cout << "into bytecode at  " << (u32)(tmp_ptr - bytecode) << "\n";
+            cout << "into bytecode at  " << (u32)(tmp_ptr - bytecode) << "\n"; */
             // then iterate through our AndCmp masks after PEXT-ing them both into
             // PEXTed-AndCmp - this gives us something we iterate over. Every entry for
             // this needs to point to our index table. We should never encounter the
@@ -284,7 +310,7 @@ public:
         and_cmps.resize(lits.size());
 
         for (u32 i = 0; i < lits.size(); i++) {
-            std::cout << "Literal " << i << " is " << lits[i].s << "\n";
+//            std::cout << "Literal " << i << " is " << lits[i].s << "\n";
             std::pair<u64, u64> cm = lits[i].toFinalCmpMsk();
             and_cmps[i].cmp_mask = cm.first; 
             and_cmps[i].and_mask = cm.second; 
@@ -299,30 +325,23 @@ public:
         ac_set.insert(AndCmp());
         c[start] = ac_set;
 
-        dump_construction(std::cout, c);
-
         set<u32> used_bits;
-        
-        /*
+        // forbid the use of bits 0..7 in our mask. we can't use these as we use a shifted-by-8
+        // version of our PEXT mask to cut the instructions in our main loop
         for (u32 i = 0; i < 8; i++) {
-            // forbid the use of bits 0..7 in our mask
-            // we can't use these as we use a shifted-by-8
-            // version of our PEXT mask to cut the instructions
-            // in our main loop
             used_bits.insert(i);
         }
-        */ 
-        const size_t BIT_LIMIT = 15;
+         
+        const size_t BIT_LIMIT = 16 + used_bits.size();
 
         while (used_bits.size() < BIT_LIMIT) {
-            vector<u32> good_bits = find_good_bits(c, 1, used_bits);
+            vector<u32> good_bits = find_good_bits(c, BIT_LIMIT - used_bits.size(), used_bits);
             if (good_bits.empty())
                 break;
             for (auto b : good_bits) {
-//                cout << " Splitting on " << b << "\n";
                 used_bits.insert(b);
                 split_on_bit(c, b);
-                dump_construction(std::cout, c);
+//                dump_construction(std::cout, c);
             }
         }
         construction_to_bytecode(c, used_bits);
@@ -372,6 +391,8 @@ public:
         
         u64 pm = pext_mask;
         u64 v_start = 0;
+
+        // TODO: this is buggy (or the short literal handling code is). XXX FIX
         for (; i < (input.start + 7) && (i < input.end); i++) {
             v_start |= input.buf[i]; 
             u64 idx = _pext_u64(v_start, pm);
