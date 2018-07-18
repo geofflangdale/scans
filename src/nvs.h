@@ -212,6 +212,13 @@ class NVS {
         }
         c.swap(tmp);
     }
+    // dump bits low to high
+    inline void dumpbits2(u64 v, std::string msg) {
+            for (u32 i = 0; i < 64; i++) {
+            std::cout << (((v>>(u64)i) & 0x1ULL) ? "1" : "_");
+        }
+        std::cout << " " << msg << "\n";
+    }
 
     // turn this construction into the actual bytecode (current a bunch of STL things
     // but will make into a real bytecode eventually)
@@ -239,6 +246,7 @@ class NVS {
         u32 bytecode_size = 64; // reserve the 0 point for 'can't happen'. Blow a whole cache line.
         // preliminary: build up a bytecode by figuring out the size, then doing the thing
         for (auto & i : c) {
+            bytecode_size += 2 * sizeof(u64);
             for (auto & j : i.first) {
                 bytecode_size += sizeof(u8)
                               + sizeof(u8)
@@ -269,8 +277,11 @@ class NVS {
                 u64 addend = (~and_mask & -~and_mask); // lowest clear bit in and_mask
                 do {
                     u64 val = (cmp_mask & and_mask) | (v & (~and_mask));
+
+                    // these lines are the actual work
                     assert(primary_table[val] == 0);
                     primary_table[val] = (u32)(tmp_ptr - bytecode);
+
                     v = (v + addend) | and_mask;
                 
                 } while (v != and_mask);
@@ -278,6 +289,37 @@ class NVS {
 
             // new bytecode
             u32 cnt = 0;
+            // first cut of a more sophisticated bytecode: do an and/cmp immediately and fail out if not true
+            u64 and_mask = (u64)-1;
+            u64 or_accumulator_value = 0;
+            u64 and_accumulator_value = (u64)-1;
+            for (auto & j : i.first) {
+                auto p = lits[j].toFinalCmpMsk();
+                and_mask &= p.second;
+                or_accumulator_value |= p.first;
+                and_accumulator_value &= p.first;
+                std::cout << "string: " << lits[j].s << "\n";
+                dumpbits2(p.first, "string_cmp");
+                dumpbits2(p.second, "string_mask");
+                dumpbits2(and_mask, "and_mask");
+                dumpbits2(or_accumulator_value, "or_accum");
+                dumpbits2(and_accumulator_value, "and_accum");
+            }
+            // now if we ever saw a 1 at a given bit the or_accumulator_value will be 1 and if we saw a 0 the and_accumulator_value
+            // will be 0
+            // we select out the bits that we actually care about. Now for those bits we can find the values by looking at the 
+            // or accumulator value - if the bit was never 1 it must have been consistently 0 for all the bits that made it into
+            // constant bits.
+            u64 constant_bits = (or_accumulator_value ^ ~and_accumulator_value) & and_mask;
+            u64 constant_value = constant_bits & or_accumulator_value; 
+            dumpbits2(constant_bits, "constant_bits");
+            dumpbits2(constant_value, "constant_value");
+            // todo: write these two values out at our bytecode right then and there
+            *(u64 *)tmp_ptr = constant_bits;
+            tmp_ptr += sizeof(u64);
+            *(u64 *)tmp_ptr = constant_value;
+            tmp_ptr += sizeof(u64);
+            
             for (auto & j : i.first) {
                 assert (lits[j].s.size() < 256); // only do strings <256
                 *tmp_ptr++ = (u8)lits[j].s.size();
@@ -332,7 +374,7 @@ public:
             used_bits.insert(i);
         }
          
-        const size_t BIT_LIMIT = 16 + used_bits.size();
+        const size_t BIT_LIMIT = 22 + used_bits.size();
 
         while (used_bits.size() < BIT_LIMIT) {
             vector<u32> good_bits = find_good_bits(c, BIT_LIMIT - used_bits.size(), used_bits);
@@ -353,9 +395,20 @@ public:
 
     inline void handle_table(const InputBlock input, u32 table, size_t i, Result<ResultType> & out, u32 & result_idx) const {
         const u8 * bytecode_loc = bytecode + table;
-        // bytecode consists of a size (u8) + flags (u8) + id (u32) plus size bytes worth of string
+        // we have an and/cmp header then for each string the bytecode consists of a size (u8) + flags (u8) + id (u32) plus
+        // size bytes worth of string
+        u64 and_mask = *(const u64 *)bytecode_loc;
+        u64 cmp_mask = *(const u64 *)(bytecode_loc + 8);
+        u64 at_gun_value = *(const u64 *)(input.buf + i - 7); // wrong; need 'short' handling to get this right
+        if ((at_gun_value & and_mask) != cmp_mask)
+            return;
+
         u8 flags;
+        u32 cnt = 0, cnt_match = 0;
+        std::cout << " in handle table: ";
+        bytecode_loc += 16;
         do {
+            cnt++;
             u8 string_size = *bytecode_loc++;
             flags = *bytecode_loc++; // can't declare it here as we use it in our compare
             u32 id = *(u32 *)bytecode_loc;
@@ -376,6 +429,7 @@ public:
             }
             if (result) {
                 out.results[result_idx++] = std::make_pair(i, id);
+                cnt_match++;
             }
 
             bytecode_loc += string_size;
@@ -383,6 +437,7 @@ public:
         // need to make this unlikely to avoid the loop being considered hot enough to displace registers
         // from our actual main loop - otherwise an 'unlikely branch' to a 'likely loop' still yields a 
         // estimate that the contained code is hot enough to matter
+        std::cout << cnt << "/" << cnt_match << "\n";
     }
 
     never_inline void scan(const InputBlock input, Result<ResultType> & out) const {
